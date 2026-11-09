@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo } from "react";
 import type { Dispatch, SetStateAction } from "react";
 import {
   columnVisibilityFeature,
@@ -10,18 +10,13 @@ import {
   rowPaginationFeature,
   tableFeatures,
   useTable,
-  type ColumnVisibilityState,
 } from "@tanstack/react-table";
-import { cn } from "cn";
 import {
-  ChevronDownIcon,
   ChevronLeftIcon,
   ChevronRightIcon,
   ChevronsLeftIcon,
   ChevronsRightIcon,
-  Columns3Icon,
   EllipsisVerticalIcon,
-  ExternalLinkIcon,
   PlusIcon,
 } from "lucide-react";
 
@@ -29,7 +24,6 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
-  DropdownMenuCheckboxItem,
   DropdownMenuContent,
   DropdownMenuGroup,
   DropdownMenuItem,
@@ -54,33 +48,30 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { useSidebar } from "@/components/ui/sidebar";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useIsMobile } from "@/hooks/use-mobile";
 
 import {
   OUTCOMES,
   STAGES,
-  STATUS_OPTIONS,
-  attentionFor,
-  daysBetween,
-  formatShortDate,
-  parseStatus,
+  formatAppliedDate,
   statusValue,
 } from "../_tracker/applications";
 import type { Application, ApplicationTab, TableActions } from "../_tracker/applications";
+import { StageBadge } from "../_tracker/stage-badge";
 
 const APPLICATION_TABS: { value: ApplicationTab; label: string }[] = [
-  { value: "attention", label: "Needs attention" },
   { value: "active", label: "All active" },
   ...STAGES,
 ];
 
+const OPEN_STAGES = STAGES.filter((stage) => stage.value !== "closed");
+
 const EMPTY_MESSAGES: Record<ApplicationTab, string> = {
-  attention: "Nothing needs attention. Follow-ups and interviews show up here.",
   active: "No active applications yet.",
   applied: "Nothing is waiting on a reply.",
   interviewing: "No interviews in progress.",
-  offer: "No offers yet.",
   closed: "No closed applications.",
 };
 
@@ -92,167 +83,57 @@ const features = tableFeatures({
 
 const columnHelper = createColumnHelper<typeof features, Application>();
 
-function PrimaryAction({
-  application,
-  today,
-  actions,
-}: {
-  application: Application;
-  today: string;
-  actions: TableActions;
-}) {
-  const kind = attentionFor(application, today)?.kind;
-  if (!kind) return null;
-
-  const { label, run } = {
-    action: { label: "Mark done", run: () => actions.markDone(application) },
-    "no-reply": { label: "Follow up", run: () => actions.followUp(application) },
-  }[kind];
-
-  return (
-    <Button
-      variant="outline"
-      size="sm"
-      aria-label={`${label}: ${application.company}`}
-      onClick={run}
-    >
-      {label}
-    </Button>
-  );
-}
-
-function buildColumns(today: string, actions: TableActions, tab: ApplicationTab) {
+function buildColumns(actions: TableActions, today: string) {
   return columnHelper.columns([
     columnHelper.accessor("company", {
       id: "company",
-      header: "Application",
-      enableHiding: false,
-      cell: ({ row }) => {
-        const application = row.original;
-        const attention = attentionFor(application, today);
-        const step = attention?.detail ?? application.nextAction;
-        const dueOn = application.nextActionOn;
-        const dueText = attention?.label ?? (dueOn ? formatShortDate(dueOn) : null);
-        const isOverdue = dueOn !== null && daysBetween(today, dueOn) < 0;
-        return (
-          <div className="max-w-48 whitespace-normal sm:max-w-72">
-            <div className="flex items-center gap-1">
-              <Button
-                variant="link"
-                className="tap-target h-auto w-fit p-0 text-left font-medium text-foreground"
-                onClick={() => actions.edit(application)}
-              >
-                {application.company}
-              </Button>
-              {application.url && (
-                <a
-                  href={application.url}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  aria-label={`Open job posting for ${application.company}`}
-                  className="tap-target inline-flex size-6 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors outline-none hover:bg-muted hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring"
-                >
-                  <ExternalLinkIcon className="size-3.5" />
-                </a>
-              )}
-            </div>
-            <p className="text-muted-foreground">{application.role}</p>
-            {step && <p className="text-muted-foreground md:hidden">{step}</p>}
-            {dueText && (
-              <p
-                className={cn(
-                  "tabular-nums md:hidden",
-                  isOverdue ? "font-medium text-destructive" : "text-muted-foreground",
-                )}
-              >
-                {dueText}
-              </p>
-            )}
-          </div>
-        );
-      },
+      header: "Company name",
+      cell: ({ row }) => (
+        <div className="max-w-44 whitespace-normal md:max-w-72">
+          <Button
+            variant="link"
+            className="tap-target h-auto w-fit min-w-0 p-0 text-left font-medium whitespace-normal text-foreground"
+          >
+            {row.original.company}
+          </Button>
+          <p className="text-muted-foreground md:hidden">{row.original.role}</p>
+          <p className="text-muted-foreground tabular-nums md:hidden">
+            Applied {formatAppliedDate(row.original.appliedOn, today)}
+          </p>
+        </div>
+      ),
+    }),
+    columnHelper.accessor("role", {
+      id: "role",
+      header: "Role",
+      cell: ({ row }) => (
+        <span className="block max-w-72 truncate text-muted-foreground" title={row.original.role}>
+          {row.original.role}
+        </span>
+      ),
     }),
     columnHelper.accessor("stage", {
       id: "stage",
       header: "Stage",
-      cell: ({ row }) => (
-        <Select
-          items={STATUS_OPTIONS}
-          value={statusValue(row.original)}
-          onValueChange={(value) => {
-            if (!value) return;
-            const { stage, outcome } = parseStatus(value);
-            actions.setStage(row.original, stage, outcome);
-          }}
-        >
-          <SelectTrigger
-            size="sm"
-            className={row.original.stage === "closed" ? "w-44" : "w-30"}
-            aria-label={`Stage for ${row.original.company}`}
-          >
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectGroup>
-              {STATUS_OPTIONS.map(({ value, label }) => (
-                <SelectItem key={value} value={value}>
-                  {label}
-                </SelectItem>
-              ))}
-            </SelectGroup>
-          </SelectContent>
-        </Select>
-      ),
+      cell: ({ row }) => <StageBadge application={row.original} />,
     }),
     columnHelper.accessor("appliedOn", {
       id: "applied",
-      header: "Applied",
+      header: "Applied date",
       cell: ({ row }) => (
         <span className="text-muted-foreground tabular-nums">
-          {formatShortDate(row.original.appliedOn)}
+          {formatAppliedDate(row.original.appliedOn, today)}
         </span>
       ),
-    }),
-    columnHelper.accessor("nextAction", {
-      id: "next",
-      header: "Next action",
-      cell: ({ row }) => (
-        <span className="text-muted-foreground">
-          {attentionFor(row.original, today)?.detail ?? row.original.nextAction ?? "None set"}
-        </span>
-      ),
-    }),
-    columnHelper.accessor("nextActionOn", {
-      id: "due",
-      header: "Due",
-      cell: ({ row }) => {
-        const dueOn = row.original.nextActionOn;
-        const attention = attentionFor(row.original, today);
-        const isOverdue = dueOn !== null && daysBetween(today, dueOn) < 0;
-        return (
-          <span
-            className={cn(
-              "tabular-nums",
-              isOverdue ? "font-medium text-destructive" : "text-muted-foreground",
-            )}
-          >
-            {attention?.label ?? (dueOn ? formatShortDate(dueOn) : "None")}
-          </span>
-        );
-      },
     }),
     columnHelper.display({
       id: "actions",
-      enableHiding: false,
       cell: ({ row }) => {
         const application = row.original;
-        const attention = attentionFor(application, today);
-        const showPrimary = tab === "attention";
+        const currentStatus = statusValue(application);
         return (
-          <div className="flex items-center justify-end gap-2 md:gap-1">
-            {showPrimary && (
-              <PrimaryAction application={application} today={today} actions={actions} />
-            )}
+          // React events bubble out of the menu's portal, so this also covers its items.
+          <div className="flex justify-end" onClick={(event) => event.stopPropagation()}>
             <DropdownMenu>
               <DropdownMenuTrigger
                 render={
@@ -266,36 +147,38 @@ function buildColumns(today: string, actions: TableActions, tab: ApplicationTab)
                 <EllipsisVerticalIcon />
                 <span className="sr-only">Actions for {application.company}</span>
               </DropdownMenuTrigger>
-              <DropdownMenuContent align="end" className="w-40">
+              <DropdownMenuContent align="end" className="w-44">
                 <DropdownMenuItem onClick={() => actions.edit(application)}>
                   Edit details
                 </DropdownMenuItem>
-                {!showPrimary && application.nextAction && (
-                  <DropdownMenuItem onClick={() => actions.markDone(application)}>
-                    Mark done
-                  </DropdownMenuItem>
-                )}
-                {!showPrimary && attention?.kind === "no-reply" && (
-                  <DropdownMenuItem onClick={() => actions.followUp(application)}>
-                    Follow up
-                  </DropdownMenuItem>
-                )}
-                {application.stage !== "closed" && (
-                  <>
-                    <DropdownMenuSeparator />
-                    <DropdownMenuGroup>
-                      <DropdownMenuLabel>Close as</DropdownMenuLabel>
-                      {OUTCOMES.map(({ value, label }) => (
-                        <DropdownMenuItem
-                          key={value}
-                          onClick={() => actions.setStage(application, "closed", value)}
-                        >
-                          {label}
-                        </DropdownMenuItem>
-                      ))}
-                    </DropdownMenuGroup>
-                  </>
-                )}
+                <DropdownMenuSeparator />
+                <DropdownMenuGroup>
+                  <DropdownMenuLabel>Change stage</DropdownMenuLabel>
+                  {OPEN_STAGES.filter((stage) => stage.value !== currentStatus).map(
+                    ({ value, label }) => (
+                      <DropdownMenuItem
+                        key={value}
+                        onClick={() => actions.setStage(application, value)}
+                      >
+                        {label}
+                      </DropdownMenuItem>
+                    ),
+                  )}
+                </DropdownMenuGroup>
+                <DropdownMenuSeparator />
+                <DropdownMenuGroup>
+                  <DropdownMenuLabel>Close as</DropdownMenuLabel>
+                  {OUTCOMES.filter(({ value }) => `closed:${value}` !== currentStatus).map(
+                    ({ value, label }) => (
+                      <DropdownMenuItem
+                        key={value}
+                        onClick={() => actions.setStage(application, "closed", value)}
+                      >
+                        {label}
+                      </DropdownMenuItem>
+                    ),
+                  )}
+                </DropdownMenuGroup>
               </DropdownMenuContent>
             </DropdownMenu>
           </div>
@@ -320,7 +203,9 @@ export function ApplicationsTable({
   onPaginationChange,
   actions,
   onAdd,
+  isSearching,
 }: {
+  isSearching: boolean;
   applications: Application[];
   today: string;
   tab: ApplicationTab;
@@ -332,30 +217,30 @@ export function ApplicationsTable({
   onAdd: () => void;
 }) {
   const isMobile = useIsMobile();
-  const [columnVisibility, setColumnVisibility] = useState<ColumnVisibilityState>({});
-  const columns = useMemo(() => buildColumns(today, actions, tab), [today, actions, tab]);
+  const { state: sidebarState } = useSidebar();
+  // The sidebar has its own Add job button, so this one only fills in when that's out of view.
+  const showAddButton = isMobile || sidebarState === "collapsed";
+  const columns = useMemo(() => buildColumns(actions, today), [actions, today]);
+
+  // Rows can disappear (closing the last job on a page), so keep the page in range.
+  const lastPageIndex = Math.max(Math.ceil(applications.length / pagination.pageSize) - 1, 0);
+  const currentPagination = {
+    ...pagination,
+    pageIndex: Math.min(pagination.pageIndex, lastPageIndex),
+  };
 
   const table = useTable({
     features,
     data: applications,
     columns,
+    // The list is rebuilt on every render, which would otherwise snap back to page 1.
+    autoResetPageIndex: false,
     state: {
-      columnVisibility: isMobile
-        ? {
-            ...columnVisibility,
-            applied: false,
-            next: false,
-            due: false,
-            // The action button needs this column's room on a phone.
-            ...(tab === "attention" ? { stage: false } : {}),
-            // Closed rows only offer Edit there, which tapping the company name already does.
-            ...(tab === "closed" ? { actions: false } : {}),
-          }
-        : columnVisibility,
-      pagination,
+      // Phones show the role and date under the company name instead.
+      columnVisibility: isMobile ? { role: false, applied: false } : {},
+      pagination: currentPagination,
     },
     getRowId: (row) => row.id,
-    onColumnVisibilityChange: setColumnVisibility,
     onPaginationChange,
   });
 
@@ -400,36 +285,13 @@ export function ApplicationsTable({
             </TabsTrigger>
           ))}
         </TabsList>
-        <div className="flex items-center gap-2">
-          {!isMobile && (
-            <DropdownMenu>
-              <DropdownMenuTrigger render={<Button variant="outline" size="sm" />}>
-                <Columns3Icon data-icon="inline-start" />
-                Columns
-                <ChevronDownIcon data-icon="inline-end" />
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end" className="w-36">
-                {table
-                  .getAllColumns()
-                  .filter((column) => column.accessorFn !== undefined && column.getCanHide())
-                  .map((column) => (
-                    <DropdownMenuCheckboxItem
-                      key={column.id}
-                      checked={column.getIsVisible()}
-                      onCheckedChange={(value) => column.toggleVisibility(!!value)}
-                    >
-                      {String(column.columnDef.header)}
-                    </DropdownMenuCheckboxItem>
-                  ))}
-              </DropdownMenuContent>
-            </DropdownMenu>
-          )}
+        {showAddButton && (
           <Button variant="outline" size="sm" onClick={onAdd}>
             <PlusIcon />
             <span className="hidden lg:inline">Add job</span>
             <span className="sr-only lg:hidden">Add job</span>
           </Button>
-        </div>
+        )}
       </div>
       <TabsContent
         value={tab}
@@ -452,7 +314,12 @@ export function ApplicationsTable({
             <TableBody>
               {rows.length > 0 ? (
                 rows.map((row) => (
-                  <TableRow key={row.id}>
+                  // The company name is a button inside the row, so keyboard users get this too.
+                  <TableRow
+                    key={row.id}
+                    className="cursor-pointer"
+                    onClick={() => actions.view(row.original)}
+                  >
                     {row.getVisibleCells().map((cell) => (
                       <TableCell key={cell.id}>
                         <FlexRender cell={cell} />
@@ -463,7 +330,11 @@ export function ApplicationsTable({
               ) : (
                 <TableRow className="hover:bg-transparent">
                   <TableCell colSpan={columns.length} className="h-28 text-center whitespace-normal">
-                    <p className="text-muted-foreground">{EMPTY_MESSAGES[tab]}</p>
+                    <p className="text-muted-foreground">
+                      {isSearching
+                        ? "No matches in this tab. The tab counts show where your matches are."
+                        : EMPTY_MESSAGES[tab]}
+                    </p>
                   </TableCell>
                 </TableRow>
               )}
@@ -499,7 +370,7 @@ export function ApplicationsTable({
               </Select>
             </div>
             <div className="flex w-fit items-center justify-center text-sm font-medium tabular-nums">
-              Page {pagination.pageIndex + 1} of {Math.max(table.getPageCount(), 1)}
+              Page {currentPagination.pageIndex + 1} of {Math.max(table.getPageCount(), 1)}
             </div>
             <div className="ml-auto flex items-center gap-2 lg:ml-0">
               <Button

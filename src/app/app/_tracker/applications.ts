@@ -1,9 +1,8 @@
-export type Stage = "applied" | "interviewing" | "offer" | "closed";
+export type Stage = "applied" | "interviewing" | "closed";
 
 export const STAGES: { value: Stage; label: string }[] = [
   { value: "applied", label: "Applied" },
   { value: "interviewing", label: "Interviewing" },
-  { value: "offer", label: "Offer" },
   { value: "closed", label: "Closed" },
 ];
 
@@ -27,12 +26,16 @@ export function statusValue({ stage, outcome }: Pick<Application, "stage" | "out
   return stage === "closed" ? `closed:${outcome ?? "no_response"}` : stage;
 }
 
-export function parseStatus(value: string): { stage: Stage; outcome: Outcome | null } {
-  if (value.startsWith("closed:")) {
-    return { stage: "closed", outcome: value.slice("closed:".length) as Outcome };
-  }
-  return { stage: value as Stage, outcome: null };
-}
+export const NO_SOURCE = "none";
+export const OTHER_SOURCE = "Other";
+
+export const SOURCE_OPTIONS = [
+  { value: NO_SOURCE, label: "Not specified" },
+  ...["LinkedIn", "Indeed", "Company site", "Referral", OTHER_SOURCE].map((source) => ({
+    value: source,
+    label: source,
+  })),
+];
 
 export const INTERVIEW_ROUNDS = [
   "Recruiter call",
@@ -56,35 +59,23 @@ export type Application = {
   role: string;
   url: string | null;
   source: string | null;
+  sentTo: string | null;
+  location: string | null;
+  description: string | null;
   stage: Stage;
   outcome: Outcome | null;
   appliedOn: string;
-  nextAction: string | null;
-  nextActionOn: string | null;
   interviews: Interview[];
 };
 
-export type ApplicationTab = "attention" | "active" | Stage;
+export type ApplicationTab = "active" | Stage;
 
 export type TableActions = {
+  view: (application: Application) => void;
   edit: (application: Application) => void;
   setStage: (application: Application, stage: Stage, outcome?: Outcome | null) => void;
-  markDone: (application: Application) => void;
-  followUp: (application: Application) => void;
 };
 
-export type AttentionKind = "action" | "no-reply";
-
-export type AttentionItem = {
-  application: Application;
-  kind: AttentionKind;
-  label: string;
-  detail: string;
-  overdue: boolean;
-  order: number;
-};
-
-const NO_REPLY_AFTER_DAYS = 14;
 const LOOK_AHEAD_DAYS = 7;
 
 // Dates are stored as local YYYY-MM-DD strings, so a due date never shifts with the timezone.
@@ -118,69 +109,17 @@ export function formatShortDate(iso: string) {
   }).format(parseDate(iso));
 }
 
-function days(count: number) {
-  return `${count} ${count === 1 ? "day" : "days"}`;
+export function sortByApplied(applications: Application[]) {
+  return [...applications].sort((a, b) => b.appliedOn.localeCompare(a.appliedOn));
 }
 
-function dueLabel(diff: number) {
-  if (diff < 0) return `Overdue by ${days(-diff)}`;
-  if (diff === 0) return "Due today";
-  if (diff === 1) return "Tomorrow";
-  return `In ${days(diff)}`;
-}
-
-export function attentionFor(application: Application, today: string): AttentionItem | null {
-  const { stage, nextAction, nextActionOn, appliedOn } = application;
-  if (stage === "closed") return null;
-
-  if (nextAction && nextActionOn) {
-    const diff = daysBetween(today, nextActionOn);
-    const isLiveProcess = stage === "interviewing" || stage === "offer";
-    if (diff <= 0 || (isLiveProcess && diff <= LOOK_AHEAD_DAYS)) {
-      return {
-        application,
-        kind: "action",
-        label: dueLabel(diff),
-        detail: nextAction,
-        overdue: diff < 0,
-        order: diff,
-      };
-    }
-  }
-
-  if (stage === "applied" && !nextAction) {
-    const waited = daysBetween(appliedOn, today);
-    if (waited >= NO_REPLY_AFTER_DAYS) {
-      return {
-        application,
-        kind: "no-reply",
-        label: `No reply for ${days(waited)}`,
-        detail: "Follow up or close this one",
-        overdue: false,
-        order: Number.MAX_SAFE_INTEGER - waited,
-      };
-    }
-  }
-
-  return null;
-}
-
-export function getAttentionItems(applications: Application[], today: string) {
-  return applications
-    .map((application) => attentionFor(application, today))
-    .filter((item): item is AttentionItem => item !== null)
-    .sort((a, b) => a.order - b.order);
-}
-
-export function sortByNextStep(applications: Application[]) {
-  return [...applications].sort((a, b) => {
-    const aDate = a.nextActionOn;
-    const bDate = b.nextActionOn;
-    if (aDate && bDate) return aDate.localeCompare(bDate);
-    if (aDate) return -1;
-    if (bDate) return 1;
-    return 0;
-  });
+export function formatAppliedDate(iso: string, today: string) {
+  return new Intl.DateTimeFormat(undefined, {
+    month: "short",
+    day: "numeric",
+    ...(iso.slice(0, 4) === today.slice(0, 4) ? {} : { year: "numeric" }),
+    timeZone: "UTC",
+  }).format(parseDate(iso));
 }
 
 export function formatInterviewWhen(startsAt: string, today: string) {
@@ -238,6 +177,42 @@ export function getUpcomingInterviews(
     .sort((a, b) => a.interview.startsAt.localeCompare(b.interview.startsAt));
 }
 
+export function matchesSearch(application: Application, query: string) {
+  const terms = query.trim().toLowerCase().split(/\s+/).filter(Boolean);
+  if (terms.length === 0) return true;
+  const text = [
+    application.company,
+    application.role,
+    application.location,
+    application.source,
+    application.sentTo,
+    application.description,
+  ]
+    .filter(Boolean)
+    .join(" ")
+    .toLowerCase();
+  return terms.every((term) => text.includes(term));
+}
+
+export function sourceBreakdown(applications: Application[]) {
+  const listed = SOURCE_OPTIONS.filter((option) => option.value !== NO_SOURCE);
+  const groupOf = (source: string | null) =>
+    source === null
+      ? NO_SOURCE
+      : listed.some((option) => option.value === source)
+        ? source
+        : OTHER_SOURCE;
+
+  return {
+    total: applications.length,
+    rows: SOURCE_OPTIONS.map(({ value, label }) => ({
+      value,
+      label,
+      count: applications.filter((a) => groupOf(a.source) === value).length,
+    })).sort((a, b) => b.count - a.count),
+  };
+}
+
 export function outcomeBreakdown(applications: Application[]) {
   const closed = applications.filter((a) => a.stage === "closed");
   return {
@@ -270,40 +245,15 @@ export function applicationsOverTime(
   });
 }
 
-export type DashboardStats = {
-  active: number;
-  waiting: number;
-  appliedThisWeek: number;
-  attention: AttentionItem[];
-  overdue: number;
-  interviewing: number;
-  nextInterview: ReturnType<typeof getUpcomingInterviews>[number] | null;
-  interviewRate: number;
-  atInterview: number;
-  totalApplied: number;
-};
-
-export function getDashboardStats(applications: Application[], today: string): DashboardStats {
-  const count = (stage: Stage) => applications.filter((a) => a.stage === stage).length;
-  const attention = getAttentionItems(applications, today);
-  const atInterview = count("interviewing") + count("offer");
-  const weekStart = addDays(today, -6);
-
-  return {
-    active: applications.filter((a) => a.stage !== "closed").length,
-    waiting: count("applied"),
-    appliedThisWeek: applications.filter((a) => a.appliedOn >= weekStart).length,
-    attention,
-    overdue: attention.filter((item) => item.overdue).length,
-    interviewing: count("interviewing"),
-    nextInterview: getUpcomingInterviews(applications, today, 365)[0] ?? null,
-    interviewRate:
-      applications.length > 0 ? Math.round((atInterview / applications.length) * 100) : 0,
-    atInterview,
-    totalApplied: applications.length,
-  };
+export function getStageCounts(applications: Application[]) {
+  return STAGES.map(({ value, label }) => ({
+    value,
+    label,
+    count: applications.filter((a) => a.stage === value).length,
+  }));
 }
 
+const SAMPLE_SOURCES = ["LinkedIn", "Indeed", "LinkedIn", "Company site"];
 const SAMPLE_OUTCOMES: Outcome[] = ["no_response", "rejected", "no_response", "withdrawn", "rejected", "declined"];
 
 // Placeholder rows until the database exists. Replace this function's call in tracker-provider.tsx.
@@ -316,7 +266,9 @@ export function createSampleApplications(today: string): Application[] {
     stage: Stage,
     source: string,
     dates: Pick<Application, "appliedOn"> &
-      Partial<Pick<Application, "nextAction" | "nextActionOn" | "interviews">>,
+      Partial<
+        Pick<Application, "interviews" | "location" | "description" | "sentTo">
+      >,
   ): Application => ({
     id,
     company,
@@ -325,9 +277,10 @@ export function createSampleApplications(today: string): Application[] {
     outcome: stage === "closed" ? SAMPLE_OUTCOMES[Number(id.replace(/\D/g, "")) % SAMPLE_OUTCOMES.length] : null,
     source,
     url: "https://example.com/careers",
-    nextAction: null,
-    nextActionOn: null,
     interviews: [],
+    sentTo: null,
+    location: null,
+    description: null,
     ...dates,
   });
 
@@ -354,10 +307,15 @@ export function createSampleApplications(today: string): Application[] {
 
   return [
     ...olderApplications.map(([company, role, stage, offset], index) =>
-      row(`older-${index}`, company, role, stage, "Company site", { appliedOn: on(offset) }),
+      row(`older-${index}`, company, role, stage, SAMPLE_SOURCES[index % SAMPLE_SOURCES.length], {
+        appliedOn: on(offset),
+      }),
     ),
     row("1", "Harbor Health", "Frontend Engineer", "interviewing", "Referral", {
       appliedOn: on(-16),
+      location: "Hybrid, Makati",
+      sentTo: "careers@harborhealth.example",
+      description: "Build patient-facing web apps with React and TypeScript.",
       interviews: [
         {
           id: "harbor-1",
@@ -369,8 +327,6 @@ export function createSampleApplications(today: string): Application[] {
     }),
     row("2", "Fieldnote", "Product Engineer", "applied", "Company site", {
       appliedOn: on(-9),
-      nextAction: "Email the recruiter",
-      nextActionOn: on(-2),
     }),
     row("3", "Tallgrass Software", "Full-Stack Developer", "applied", "Greenhouse", {
       appliedOn: on(-19),
@@ -378,15 +334,11 @@ export function createSampleApplications(today: string): Application[] {
     row("5", "Pinecrest Bank", "Web Developer", "applied", "Lever", {
       appliedOn: on(-4),
     }),
-    row("6", "Orbit Studio", "UI Engineer", "offer", "Referral", {
+    row("6", "Orbit Studio", "UI Engineer", "interviewing", "Referral", {
       appliedOn: on(-30),
-      nextAction: "Reply to the offer",
-      nextActionOn: on(4),
     }),
     row("7", "Verdant Energy", "Software Engineer", "interviewing", "Ashby", {
       appliedOn: on(-21),
-      nextAction: "Send a thank-you note",
-      nextActionOn: on(0),
       interviews: [
         {
           id: "verdant-1",

@@ -59,7 +59,9 @@ export function ApplicationsChart({
   return (
     <Card className="@container/card">
       <CardHeader>
-        <CardTitle>Applications sent</CardTitle>
+        <CardTitle>
+          <h2>Applications sent</h2>
+        </CardTitle>
         <CardDescription className="tabular-nums">
           {total} in the {rangeLabel}
         </CardDescription>

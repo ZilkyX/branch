@@ -6,9 +6,10 @@ import { toast } from "sonner";
 
 import { Toaster } from "@/components/ui/sonner";
 
+import { ApplicationDetails } from "./application-details";
 import { ApplicationDrawer } from "./application-drawer";
 import type { ApplicationDraft } from "./application-drawer";
-import { OUTCOMES, createSampleApplications, localToday } from "./applications";
+import { STATUS_OPTIONS, createSampleApplications, localToday, statusValue } from "./applications";
 import type { Application, ApplicationTab, TableActions } from "./applications";
 
 type Pagination = { pageIndex: number; pageSize: number };
@@ -56,11 +57,16 @@ function LoadedTracker({
   children: ReactNode;
 }) {
   const [applications, setApplications] = useState(initialApplications);
-  const [tab, setTab] = useState<ApplicationTab>("attention");
+  const [tab, setTab] = useState<ApplicationTab>("active");
   const [pagination, setPagination] = useState<Pagination>({ pageIndex: 0, pageSize: 10 });
   const [drawer, setDrawer] = useState<{ open: boolean; application: Application | null }>({
     open: false,
     application: null,
+  });
+
+  const [details, setDetails] = useState<{ open: boolean; id: string | null }>({
+    open: false,
+    id: null,
   });
 
   const actions = useMemo<TableActions>(() => {
@@ -79,29 +85,22 @@ function LoadedTracker({
       });
 
     return {
+      view: (application) => setDetails({ open: true, id: application.id }),
       edit: (application) => setDrawer({ open: true, application }),
       setStage: (application, stage, outcome = null) => {
         const { id, company, stage: previousStage, outcome: previousOutcome } = application;
         const nextOutcome = stage === "closed" ? (outcome ?? "no_response") : null;
         update(id, () => ({ stage, outcome: nextOutcome }));
-        if (nextOutcome) {
-          const label = OUTCOMES.find((o) => o.value === nextOutcome)?.label;
-          toastWithUndo(`Closed ${company}: ${label}.`, id, {
-            stage: previousStage,
-            outcome: previousOutcome,
-          });
-        }
-      },
-      markDone: ({ id, company, nextAction, nextActionOn }) => {
-        update(id, () => ({ nextAction: null, nextActionOn: null }));
-        toastWithUndo(`Marked done for ${company}.`, id, { nextAction, nextActionOn });
-      },
-      followUp: ({ id, company, nextAction, nextActionOn }) => {
-        update(id, () => ({ nextAction: "Send a follow-up", nextActionOn: today }));
-        toastWithUndo(`Follow-up added for ${company}.`, id, { nextAction, nextActionOn });
+        const label = STATUS_OPTIONS.find(
+          (option) => option.value === statusValue({ stage, outcome: nextOutcome }),
+        )?.label;
+        toastWithUndo(`Moved ${company} to ${label}.`, id, {
+          stage: previousStage,
+          outcome: previousOutcome,
+        });
       },
     };
-  }, [today]);
+  }, []);
 
   function selectTab(next: ApplicationTab) {
     setTab(next);
@@ -121,7 +120,7 @@ function LoadedTracker({
       toast.success(`Saved ${draft.company}.`);
     } else {
       setApplications((current) => [
-        { ...draft, id: crypto.randomUUID(), source: "Manual" },
+        { ...draft, id: crypto.randomUUID() },
         ...current,
       ]);
       selectTab(draft.stage);
@@ -151,7 +150,13 @@ function LoadedTracker({
         onOpenChange={(open) => setDrawer((current) => ({ ...current, open }))}
         onSave={saveDraft}
       />
-      <Toaster />
+      <ApplicationDetails
+        open={details.open}
+        application={applications.find((a) => a.id === details.id) ?? null}
+        today={today}
+        onOpenChange={(open) => setDetails((current) => ({ ...current, open }))}
+      />
+      <Toaster position="top-center" />
     </TrackerContext.Provider>
   );
 }

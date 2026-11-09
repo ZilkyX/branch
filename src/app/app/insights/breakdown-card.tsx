@@ -1,29 +1,41 @@
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 
-import { outcomeBreakdown } from "../_tracker/applications";
-import type { Application } from "../_tracker/applications";
+import { StageDot, isStageTone } from "../_tracker/stage-badge";
 
-export function OutcomeBreakdown({ applications }: { applications: Application[] }) {
-  const { total, rows } = outcomeBreakdown(applications);
-
+export function BreakdownCard({
+  title,
+  description,
+  emptyMessage,
+  total,
+  rows,
+  showStageDots = false,
+}: {
+  title: string;
+  description: string;
+  emptyMessage: string;
+  total: number;
+  rows: { value: string; label: string; count: number }[];
+  showStageDots?: boolean;
+}) {
   return (
     <Card>
       <CardHeader>
-        <CardTitle>How applications closed</CardTitle>
-        <CardDescription className="tabular-nums">
-          {total} closed {total === 1 ? "application" : "applications"}
-        </CardDescription>
+        <CardTitle>
+          <h2>{title}</h2>
+        </CardTitle>
+        <CardDescription className="tabular-nums">{description}</CardDescription>
       </CardHeader>
       <CardContent>
         {total === 0 ? (
-          <p className="text-sm text-muted-foreground">
-            Outcomes appear here once you close an application.
-          </p>
+          <p className="text-sm text-muted-foreground">{emptyMessage}</p>
         ) : (
           <dl className="divide-y">
             {rows.map(({ value, label, count }) => (
               <div key={value} className="flex items-center justify-between py-2 text-sm">
-                <dt className="text-muted-foreground">{label}</dt>
+                <dt className="flex items-center gap-2 text-muted-foreground">
+                  {showStageDots && isStageTone(value) && <StageDot tone={value} />}
+                  {label}
+                </dt>
                 <dd className="flex gap-4 tabular-nums">
                   <span className="font-medium">{count}</span>
                   <span className="w-10 text-right text-muted-foreground">

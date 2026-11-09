@@ -2,14 +2,21 @@
 
 import { Skeleton } from "@/components/ui/skeleton";
 
-import { getDashboardStats } from "../_tracker/applications";
+import {
+  addDays,
+  getStageCounts,
+  outcomeBreakdown,
+  sourceBreakdown,
+} from "../_tracker/applications";
 import { useTracker } from "../_tracker/tracker-provider";
 import { ApplicationsChart } from "./applications-chart";
-import { OutcomeBreakdown } from "./outcome-breakdown";
+import { BreakdownCard } from "./breakdown-card";
 import { StatCards } from "./stat-cards";
 
 export function InsightsView() {
   const tracker = useTracker();
+  const sources = sourceBreakdown(tracker?.applications ?? []);
+  const outcomes = outcomeBreakdown(tracker?.applications ?? []);
 
   return (
     <div className="flex flex-1 flex-col">
@@ -19,12 +26,34 @@ export function InsightsView() {
             <p className="px-4 text-sm text-muted-foreground lg:px-6">
               Showing sample data that resets when you reload.
             </p>
-            <StatCards stats={getDashboardStats(tracker.applications, tracker.today)} />
+            <StatCards
+              total={tracker.applications.length}
+              appliedThisWeek={
+                tracker.applications.filter(
+                  (a) => a.appliedOn >= addDays(tracker.today, -6),
+                ).length
+              }
+              stages={getStageCounts(tracker.applications)}
+            />
             <div className="px-4 lg:px-6">
               <ApplicationsChart applications={tracker.applications} today={tracker.today} />
             </div>
-            <div className="px-4 lg:px-6">
-              <OutcomeBreakdown applications={tracker.applications} />
+            <div className="grid gap-4 px-4 md:gap-6 lg:px-6 @3xl/main:grid-cols-2">
+              <BreakdownCard
+                title="Where applications came from"
+                description={`${sources.total} ${sources.total === 1 ? "application" : "applications"}`}
+                emptyMessage="Sources appear here once you add an application."
+                total={sources.total}
+                rows={sources.rows}
+              />
+              <BreakdownCard
+                title="How applications closed"
+                description={`${outcomes.total} closed ${outcomes.total === 1 ? "application" : "applications"}`}
+                emptyMessage="Outcomes appear here once you close an application."
+                total={outcomes.total}
+                rows={outcomes.rows}
+                showStageDots
+              />
             </div>
           </div>
         ) : (

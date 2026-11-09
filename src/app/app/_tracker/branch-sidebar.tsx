@@ -94,9 +94,11 @@ export function BranchSidebar() {
                 </SidebarMenuButton>
               </SidebarMenuItem>
             </SidebarMenu>
-            <Suspense fallback={<NavMenu pathname={null} />}>
-              <CurrentNavMenu />
-            </Suspense>
+            <nav aria-label="Main">
+              <Suspense fallback={<NavMenu pathname={null} />}>
+                <CurrentNavMenu />
+              </Suspense>
+            </nav>
           </SidebarGroupContent>
         </SidebarGroup>
       </SidebarContent>
