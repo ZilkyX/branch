@@ -74,6 +74,7 @@ export type TableActions = {
   view: (application: Application) => void;
   edit: (application: Application) => void;
   setStage: (application: Application, stage: Stage, outcome?: Outcome | null) => void;
+  delete: (application: Application) => void;
 };
 
 const LOOK_AHEAD_DAYS = 7;
@@ -251,111 +252,4 @@ export function getStageCounts(applications: Application[]) {
     label,
     count: applications.filter((a) => a.stage === value).length,
   }));
-}
-
-const SAMPLE_SOURCES = ["LinkedIn", "Indeed", "LinkedIn", "Company site"];
-const SAMPLE_OUTCOMES: Outcome[] = ["no_response", "rejected", "no_response", "withdrawn", "rejected", "declined"];
-
-// Placeholder rows until the database exists. Replace this function's call in tracker-provider.tsx.
-export function createSampleApplications(today: string): Application[] {
-  const on = (offset: number) => addDays(today, offset);
-  const row = (
-    id: string,
-    company: string,
-    role: string,
-    stage: Stage,
-    source: string,
-    dates: Pick<Application, "appliedOn"> &
-      Partial<
-        Pick<Application, "interviews" | "location" | "description" | "sentTo">
-      >,
-  ): Application => ({
-    id,
-    company,
-    role,
-    stage,
-    outcome: stage === "closed" ? SAMPLE_OUTCOMES[Number(id.replace(/\D/g, "")) % SAMPLE_OUTCOMES.length] : null,
-    source,
-    url: "https://example.com/careers",
-    interviews: [],
-    sentTo: null,
-    location: null,
-    description: null,
-    ...dates,
-  });
-
-  const olderApplications: [string, string, Stage, number][] = [
-    ["Redwood Media", "Frontend Engineer", "applied", -3],
-    ["Beacon Payments", "Software Engineer", "applied", -6],
-    ["Tideline Maps", "Web Developer", "applied", -8],
-    ["Sable Security", "Junior Developer", "applied", -11],
-    ["Linden Foods", "Full-Stack Engineer", "applied", -13],
-    ["Ember Games", "UI Developer", "closed", -17],
-    ["Quarry Data", "React Engineer", "closed", -24],
-    ["Meridian Air", "Software Developer", "closed", -27],
-    ["Hollis Legal", "Web Engineer", "closed", -33],
-    ["Fernway Homes", "Frontend Developer", "closed", -36],
-    ["Summit Retail", "Software Engineer", "closed", -38],
-    ["Clearwater Labs", "Product Engineer", "closed", -44],
-    ["Wren Education", "Frontend Engineer", "closed", -47],
-    ["Basalt Systems", "Junior Engineer", "closed", -52],
-    ["Marlow Insurance", "Web Developer", "closed", -58],
-    ["Oakline Freight", "Software Developer", "closed", -63],
-    ["Nimbus Care", "React Developer", "closed", -71],
-    ["Pelican Press", "UI Engineer", "closed", -78],
-  ];
-
-  return [
-    ...olderApplications.map(([company, role, stage, offset], index) =>
-      row(`older-${index}`, company, role, stage, SAMPLE_SOURCES[index % SAMPLE_SOURCES.length], {
-        appliedOn: on(offset),
-      }),
-    ),
-    row("1", "Harbor Health", "Frontend Engineer", "interviewing", "Referral", {
-      appliedOn: on(-16),
-      location: "Hybrid, Makati",
-      sentTo: "careers@harborhealth.example",
-      description: "Build patient-facing web apps with React and TypeScript.",
-      interviews: [
-        {
-          id: "harbor-1",
-          startsAt: `${on(1)}T14:00`,
-          round: "Technical",
-          location: "https://example.com/meet/harbor",
-        },
-      ],
-    }),
-    row("2", "Fieldnote", "Product Engineer", "applied", "Company site", {
-      appliedOn: on(-9),
-    }),
-    row("3", "Tallgrass Software", "Full-Stack Developer", "applied", "Greenhouse", {
-      appliedOn: on(-19),
-    }),
-    row("5", "Pinecrest Bank", "Web Developer", "applied", "Lever", {
-      appliedOn: on(-4),
-    }),
-    row("6", "Orbit Studio", "UI Engineer", "interviewing", "Referral", {
-      appliedOn: on(-30),
-    }),
-    row("7", "Verdant Energy", "Software Engineer", "interviewing", "Ashby", {
-      appliedOn: on(-21),
-      interviews: [
-        {
-          id: "verdant-1",
-          startsAt: `${on(3)}T10:30`,
-          round: "Final round",
-          location: "12 Solar Way, 4th floor",
-        },
-      ],
-    }),
-    row("9", "Cobalt Analytics", "React Developer", "applied", "Greenhouse", {
-      appliedOn: on(-15),
-    }),
-    row("10", "Juniper Travel", "Software Engineer II", "closed", "Lever", {
-      appliedOn: on(-40),
-    }),
-    row("11", "Alder Robotics", "Web Engineer", "applied", "Company site", {
-      appliedOn: on(-2),
-    }),
-  ];
 }

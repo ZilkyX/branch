@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import type { Dispatch, SetStateAction } from "react";
 import {
   columnVisibilityFeature,
@@ -22,6 +22,15 @@ import {
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogClose,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -83,7 +92,11 @@ const features = tableFeatures({
 
 const columnHelper = createColumnHelper<typeof features, Application>();
 
-function buildColumns(actions: TableActions, today: string) {
+function buildColumns(
+  actions: TableActions,
+  today: string,
+  onDelete: (application: Application) => void,
+) {
   return columnHelper.columns([
     columnHelper.accessor("company", {
       id: "company",
@@ -179,6 +192,10 @@ function buildColumns(actions: TableActions, today: string) {
                     ),
                   )}
                 </DropdownMenuGroup>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem variant="destructive" onClick={() => onDelete(application)}>
+                  Delete
+                </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
           </div>
@@ -220,7 +237,15 @@ export function ApplicationsTable({
   const { state: sidebarState } = useSidebar();
   // The sidebar has its own Add job button, so this one only fills in when that's out of view.
   const showAddButton = isMobile || sidebarState === "collapsed";
-  const columns = useMemo(() => buildColumns(actions, today), [actions, today]);
+  const [pendingDelete, setPendingDelete] = useState<{
+    open: boolean;
+    application: Application | null;
+  }>({ open: false, application: null });
+  const columns = useMemo(
+    () =>
+      buildColumns(actions, today, (application) => setPendingDelete({ open: true, application })),
+    [actions, today],
+  );
 
   // Rows can disappear (closing the last job on a page), so keep the page in range.
   const lastPageIndex = Math.max(Math.ceil(applications.length / pagination.pageSize) - 1, 0);
@@ -416,6 +441,31 @@ export function ApplicationsTable({
           </div>
         </div>
       </TabsContent>
+      <Dialog
+        open={pendingDelete.open}
+        onOpenChange={(open) => setPendingDelete((current) => ({ ...current, open }))}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Delete {pendingDelete.application?.company}?</DialogTitle>
+            <DialogDescription>
+              This permanently removes the application and its interviews. You can&apos;t undo it.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <DialogClose render={<Button variant="outline" />}>Cancel</DialogClose>
+            <Button
+              variant="destructive"
+              onClick={() => {
+                if (pendingDelete.application) actions.delete(pendingDelete.application);
+                setPendingDelete((current) => ({ ...current, open: false }));
+              }}
+            >
+              Delete
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </Tabs>
   );
 }

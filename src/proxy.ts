@@ -1,20 +1,29 @@
 import { clerkMiddleware, createRouteMatcher } from '@clerk/nextjs/server'
 import { NextResponse } from 'next/server'
 
-const isProtectedRoute = createRouteMatcher(['/app(.*)', '/api(.*)'])
+import { isAllowedEmail } from '@/lib/allowed-emails'
+
+const isProtectedRoute = createRouteMatcher(['/app(.*)'])
 const isAuthRoute = createRouteMatcher(['/login(.*)', '/signup(.*)'])
 
 export default clerkMiddleware(async (auth, req) => {
-  const { userId } = await auth()
+  const { userId, sessionClaims } = await auth()
+  const { pathname } = req.nextUrl
+  const isAllowed = userId !== null && isAllowedEmail(sessionClaims?.email)
+  const home = isAllowed ? '/app/dashboard' : '/not-invited'
+  const redirectTo = (path: string) => NextResponse.redirect(new URL(path, req.url))
 
   // Send people to the right place in one hop, before any page renders.
-  if (req.nextUrl.pathname === '/') {
-    return NextResponse.redirect(new URL(userId ? '/app/dashboard' : '/login', req.url))
-  }
-  if (userId && isAuthRoute(req)) {
-    return NextResponse.redirect(new URL('/app/dashboard', req.url))
+  if (pathname === '/') return redirectTo(userId ? home : '/login')
+  if (userId && isAuthRoute(req)) return redirectTo(home)
+
+  if (pathname === '/not-invited') {
+    if (!userId) return redirectTo('/login')
+    if (isAllowed) return redirectTo(home)
+    return
   }
 
+  if (userId && !isAllowed && isProtectedRoute(req)) return redirectTo('/not-invited')
   if (isProtectedRoute(req)) await auth.protect()
 })
 

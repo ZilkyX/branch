@@ -62,7 +62,7 @@ export function ApplicationDrawer({
   application: Application | null;
   today: string;
   onOpenChange: (open: boolean) => void;
-  onSave: (draft: ApplicationDraft) => void;
+  onSave: (draft: ApplicationDraft) => Promise<void>;
 }) {
   const isMobile = useIsMobile();
 
@@ -98,8 +98,9 @@ function ApplicationForm({
 }: {
   application: Application | null;
   today: string;
-  onSave: (draft: ApplicationDraft) => void;
+  onSave: (draft: ApplicationDraft) => Promise<void>;
 }) {
+  const [isSaving, setIsSaving] = useState(false);
   const [errors, setErrors] = useState<FormErrors>({});
   const [interviews, setInterviews] = useState<Interview[]>(application?.interviews ?? []);
   const [showInterviewErrors, setShowInterviewErrors] = useState(false);
@@ -120,8 +121,9 @@ function ApplicationForm({
     setInterviews((current) => current.map((i) => (i.id === id ? { ...i, ...patch } : i)));
   }
 
-  function handleSubmit(event: FormEvent<HTMLFormElement>) {
+  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    if (isSaving) return;
     const form = event.currentTarget;
     const data = new FormData(form);
     const text = (name: string) => String(data.get(name) ?? "").trim();
@@ -161,7 +163,8 @@ function ApplicationForm({
 
     const currentStage = application?.stage ?? "applied";
 
-    onSave({
+    setIsSaving(true);
+    await onSave({
       company,
       role,
       url: link.url,
@@ -175,6 +178,7 @@ function ApplicationForm({
       interviews: [...interviews].sort((a, b) => a.startsAt.localeCompare(b.startsAt)),
       appliedOn,
     });
+    setIsSaving(false);
   }
 
   return (
@@ -344,7 +348,9 @@ function ApplicationForm({
         )}
       </div>
       <DrawerFooter>
-        <Button type="submit">{application ? "Save changes" : "Save job"}</Button>
+        <Button type="submit" disabled={isSaving}>
+          {isSaving ? "Saving..." : application ? "Save changes" : "Save job"}
+        </Button>
         <DrawerClose render={<Button type="button" variant="outline" />}>Cancel</DrawerClose>
       </DrawerFooter>
     </form>

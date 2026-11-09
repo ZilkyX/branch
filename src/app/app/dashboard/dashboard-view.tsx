@@ -1,8 +1,9 @@
 "use client";
 
 import { useState } from "react";
-import { SearchIcon } from "lucide-react";
+import { PlusIcon, SearchIcon } from "lucide-react";
 
+import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 
@@ -13,7 +14,8 @@ import {
   sortByApplied,
 } from "../_tracker/applications";
 import type { Application, ApplicationTab } from "../_tracker/applications";
-import { useTracker } from "../_tracker/tracker-provider";
+import { LoadFailed } from "../_tracker/load-failed";
+import { useRetryLoad, useTracker } from "../_tracker/tracker-provider";
 import { ApplicationsTable } from "./applications-table";
 import { UpcomingInterviews } from "./upcoming-interviews";
 
@@ -21,9 +23,11 @@ const ALL_TABS: ApplicationTab[] = ["active", ...STAGES.map((stage) => stage.val
 
 export function DashboardView() {
   const tracker = useTracker();
+  const retryLoad = useRetryLoad();
   const [search, setSearch] = useState("");
 
   if (!tracker) {
+    if (retryLoad) return <LoadFailed onRetry={retryLoad} />;
     return (
       <div aria-busy aria-label="Loading dashboard" className="flex flex-col gap-4 p-4 lg:p-6">
         <Skeleton className="h-5 w-72" />
@@ -51,13 +55,25 @@ export function DashboardView() {
 
   const visible = sortByApplied(matching.filter((a) => inTab(a, tab)));
 
+  if (applications.length === 0) {
+    return (
+      <div className="flex flex-1 flex-col items-center justify-center gap-3 p-8 text-center">
+        <h2 className="text-lg font-semibold">Add your first application</h2>
+        <p className="max-w-sm text-sm text-muted-foreground">
+          Log each job you apply to, and track its stage and interviews from here.
+        </p>
+        <Button onClick={openAdd}>
+          <PlusIcon data-icon="inline-start" />
+          Add job
+        </Button>
+      </div>
+    );
+  }
+
   return (
     <div className="flex flex-1 flex-col">
       <div className="@container/main flex flex-1 flex-col gap-2">
         <div className="flex flex-col gap-4 py-4 md:gap-6 md:py-6">
-          <p className="px-4 text-sm text-muted-foreground lg:px-6">
-            Showing sample data that resets when you reload.
-          </p>
           <UpcomingInterviews
             items={getUpcomingInterviews(applications, today)}
             onOpen={actions.view}
